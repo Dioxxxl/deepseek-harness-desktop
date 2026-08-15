@@ -1,0 +1,44 @@
+appId: com.workbuddy.deepseek-harness-desktop
+productName: DeepSeek Harness Desktop
+copyright: Copyright © 2026 WorkBuddy
+artifactName: ${productName}-${version}-${arch}.${ext}
+directories:
+  output: dist
+  buildResources: build
+files:
+  # 关键陷阱：electron-builder 只会沿「dependencies / optionalDependencies」边递归打包，
+  # 会【忽略 peerDependencies】边。而 @deepseek-ai/dsh 生态大量使用 peerDependencies
+  # （如 dsh-app-boot 把 cordis-plugin-group 声明为 peer，但 dsh 自身没把它列为普通依赖），
+  # 导致这些包在打包时被静默剪除 → 运行期 ERR_MODULE_NOT_FOUND。
+  # 因此这里必须把这些被剪除的 peer 包【显式】列进 dependencies（见 package.json），
+  # 由 .pkgscratch/find_dropped_peers.cjs 对 dsh 依赖树扫描得出，dsh 升级后需重跑该校验。
+  - out/**/*
+  - package.json
+# 把随包的 Node 运行时打入 resources/node/node.exe，使 exe 脱离系统 PATH 也能拉起 dsh
+# （与 src/main/server.ts 的 findNodeBin() 查找路径严格对应）。
+extraResources:
+  - from: build-resources/node/node.exe
+    to: node/node.exe
+# 原生模块（如 dsh 依赖的 node-pty）默认会被 electron-builder 重新编译以匹配 Electron ABI。
+# 编译需要本机有 C++ 工具链（Windows 需 Visual Studio Build Tools）。CI 机器应开启以确保
+# 原生模块正确；开发/沙箱环境若缺工具链可临时设为 false 跳过（产物可能 ABI 不匹配，仅用于验证打包管线）。
+npmRebuild: false
+# 关键：必须 asar:false。
+# 桌面端用「普通 node.exe（无 Electron asar 补丁）」通过子进程拉起 dsh，
+# dsh 有数百个动态 require 的依赖。若启用 asar（默认），这些依赖被归档进
+# app.asar，普通 node 无法读取 → dsh 静默卡死、不绑端口、托盘变红。
+# asar:false 让所有文件（含 node_modules）以真实磁盘文件存在，问题彻底消失。
+asar: false
+# 目标由 CLI 指定：`--win nsis` / `--win portable`；这里仅配置各目标的行为。
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+publish:
+  provider: github
+  owner: Dioxxxl
+  repo: deepseek-harness-desktop
+  # 发布 token 通过 CI secret (GH_TOKEN) 注入，不要写死在此
