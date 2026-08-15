@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -25,8 +28,8 @@ jobs:
       - name: Build (electron-vite)
         run: npm run build
 
-      - name: Package (electron-builder)
-        run: npm run package
+      - name: Package (electron-builder, 不自动发布)
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -46,9 +49,13 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           cp "dist/DeepSeek Harness Desktop-${ver}-x64.exe" "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe"
           cp "dist/DeepSeek Harness Desktop-${ver}-x64.exe.blockmap" "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe.blockmap"
-          gh release create "${GITHUB_REF_NAME}" \
-            "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe" \
-            "dist/DeepSeek Harness Desktop-${ver}-x64.exe.blockmap" \
-            "dist/latest.yml" \
-            --title "DeepSeek Harness Desktop ${GITHUB_REF_NAME}" \
-            --notes "自动发布（electron-updater 更新源）"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release already exists, skip"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe" \
+              "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe.blockmap" \
+              "dist/latest.yml" \
+              --title "DeepSeek Harness Desktop ${GITHUB_REF_NAME}" \
+              --notes "自动发布（electron-updater 更新源）"
+          fi
