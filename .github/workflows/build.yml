@@ -1,0 +1,54 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Package (electron-builder)
+        run: npm run package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist/*.exe
+
+      # tag 推送时自动发布 GitHub Release（electron-updater 的更新源）。
+      # 注意：latest.yml 内 url 使用连字符文件名（electron-builder 规则），发布资产必须同名。
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          cp "dist/DeepSeek Harness Desktop-${ver}-x64.exe" "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe"
+          cp "dist/DeepSeek Harness Desktop-${ver}-x64.exe.blockmap" "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe.blockmap"
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/DeepSeek-Harness-Desktop-${ver}-x64.exe" \
+            "dist/DeepSeek Harness Desktop-${ver}-x64.exe.blockmap" \
+            "dist/latest.yml" \
+            --title "DeepSeek Harness Desktop ${GITHUB_REF_NAME}" \
+            --notes "自动发布（electron-updater 更新源）"
